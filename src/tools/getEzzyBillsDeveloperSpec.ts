@@ -361,12 +361,13 @@ export async function buildDeveloperSpec() {
       'Keep documents in terminal states (FAILED, COMPLETE) or with Completed === 1 visible to all users in document listings, but render them strictly read-only with their status badge; never display Approve, Reject, or Reply action controls on these documents.',
       'If Completed === 1, the workflow is completed/read-only (does not prove email delivery); keep the document in read-only mode and do not show Approve or Reject action buttons. For active pending approval documents (where Completed === 0), enable the action buttons (Save Draft, Approve & Reply / Approve & Continue Workflow) directly. Do not arbitrarily disable actions on pending items based on unrecognized internal ImageState numeric codes (such as 109).',
       'For general approval queues, default to statefilter=APPROVAL to retrieve all pending dashboard approvals. Use statefilter=EMAIL_APPROVAL only when the user specifically requests filtering exclusively for the email approval queue.',
-      'In Outlook-style inbox lists, format each card cleanly with exactly 3 lines: Line 1 displays the human/contact Name (from Contact, form_data.email_to, or user handle parsed from from_email, e.g. "nickw", "noreply", "support", "Clinton") in bold on the left and Time/Date on the right; Line 2 displays the actual email Subject line (from form_data.email_subject, e.g. "Re: 47632108 - Ditec", "Cin7 Core verification code", "Fw: Doc ID 47652181") prominent below the name; Line 3 has a clean status pill badge (e.g. "In Progress", "Waiting for Approval") and preview snippet (e.g. "AI response ready to review"). NEVER display "Unknown sender" or file names like "email.html" / "doc.pdf" or generic placeholders on cards.',
-      'In the email reply view, include an Attachment / Screenshot upload option (e.g. "📎 Choose File or Drop file here / Paste screenshot") in the editor toolbar/form so users can attach screenshots and files to the response.',
-      'Provide Outlook-style card hover actions (e.g. 🗑️ Delete calling moveToRecycleBin) with confirmation.',
-      'Paginate records based on the API count parameter (e.g. count=20 or 50 per request). Do not render all thousands of records on a single page at once; provide a "See More" / "Load More" button or page-by-page infinite scroll using page and total_count.',
+      'When displaying document listings or message cards, resolve human-friendly metadata: display the Contact/Sender name (from Contact, form_data.email_to, or from_email) and Subject (from form_data.email_subject). Avoid displaying raw internal file names (e.g. "email.html", "doc.pdf") or generic placeholders as the primary title when meaningful metadata is available.',
+      'Provide attachment upload and download capabilities when handling document responses or draft updates.',
+      'Destructive operations (e.g. deleting via moveToRecycleBin) must always prompt for human confirmation before execution.',
+      'Paginate records based on the API count parameter (e.g. count=20 or 50 per request). Do not render all thousands of records on a single page at once; provide pagination controls or page-by-page loading using page and total_count.',
       'Translate internal ImageState numeric codes to human-readable status labels (e.g. "Waiting for Approval", "In Progress", "Complete", "Failed"). Never display raw codes like "State 109" in the UI.',
-      'When editing HTML content (such as AI email responses), only the AI reply portion (before <div id="ai-original-email">) is editable in the WYSIWYG rich-text editor; the original email block (<div id="ai-original-email">) must remain sanitized and strictly read-only. Never show raw HTML tags (<p>, <br>, <div>) inside a plain text <textarea>.',
+      'When editing HTML content (such as AI email responses), only the AI reply portion (before <div id="ai-original-email">) is editable in the rich-text editor; the original email block (<div id="ai-original-email">) must remain sanitized and strictly read-only. Never show raw HTML tags (<p>, <br>, <div>) inside a plain text <textarea>.',
+      'Specific UI layouts, themes, and design choices (e.g. Outlook-style, side-by-side split pane, cards, modals) should be guided by user prompts or ChatGPT app prompts; the MCP specification defines backend API contracts, security rules, and integration workflows.',
       'When the user requests to create, build, or generate an application, create a complete, production-ready, runnable/downloadable project artifact (package.json, backend server, frontend components, CSS/styles, and configuration) rather than merely summarizing the architecture or printing fragmented snippets.',
       'Select only the API endpoints required for the user\'s specific request. Do not include all endpoints by default.',
       'The application scope is determined by the user\'s prompt, not by any single workflow example.',
@@ -580,60 +581,57 @@ export async function buildDeveloperSpec() {
     // ─────────────────────────────────────────────────────────────────────────
     // 8. APPLICATION PROFILES
     //
-    // Optional UI blueprints applied ONLY when the user specifically requests
-    // that application type. Profiles must not imply APIs that are not verified.
+    // Optional capability profiles describing required backend endpoints and
+    // business workflows. Specific UI layouts, styling, and presentation formats
+    // (e.g. Outlook-style, split-pane, modals) are determined by user prompts.
     // ─────────────────────────────────────────────────────────────────────────
     applicationProfiles: {
       _note:
-        'These are optional UI blueprints. Apply a profile only when the user specifically requests that application type.',
+        'These are optional high-level capability profiles describing required backend endpoints and business rules. ' +
+        'Specific UI layouts (e.g. Outlook-style, side-by-side split pane, table views), styling, and presentation choices ' +
+        'are generic and should be guided by the user prompt or ChatGPT app prompt.',
 
       'document-browser': {
-        description: 'Grid/table view of documents with search, state filter tabs, pagination, and metadata inspector.',
+        description: 'Document exploration interface with search, state filtering, pagination, and metadata inspection.',
         requiredEndpoints: ['searchInvoicesPaged', 'getInvoiceDetails', 'getFormData', 'getDocumentClassification'],
-        uiElements: ['Search bar', 'State filter tabs', 'Pagination controls', 'Document metadata inspector'],
+        capabilities: ['Search filtering', 'State filter tabs', 'Pagination controls', 'Document metadata inspector'],
       },
       'approval-queue': {
-        description: 'Focused queue of pending approval items with document preview and confirmation dialogs.',
+        description: 'Focused approval workflow queue with document preview, approval submission, and rejection handling.',
         requiredEndpoints: ['searchInvoicesPaged', 'getInvoiceDetails', 'approveInvoice', 'rejectInvoice'],
-        uiElements: [
-          'Pending approval list',
-          'Document preview pane',
-          '"Approve & Continue Workflow" button with confirmation dialog',
-          '"Reject" button with reason input and confirmation dialog',
+        capabilities: [
+          'Pending approval list with statefilter=APPROVAL',
+          'Document preview display',
+          'Approval execution (approveInvoice with parentDocumentId)',
+          'Rejection execution (rejectInvoice with invoiceid and reason)',
         ],
       },
       'email-response-approval': {
-        description: 'Outlook-style 2-pane email approval layout with independent pane scrolling and WYSIWYG reply editor.',
+        description: 'Email approval and reply workflow interface with draft editing, attachment management, and approval actions.',
         requiredEndpoints: [
           'searchInvoicesPaged', 'getMyAttachments2', 'getFormData',
           'updateInvoiceImage', 'approveInvoice', 'moveToRecycleBin',
         ],
-        layout: {
-          container: 'Full viewport height (100vh) with fixed top application header.',
-          panes: '2-pane flex container (overflow: hidden, height: calc(100vh - headerHeight)).',
-          leftPane: 'Inbox list (width: 360px-400px, border-right, overflow-y: auto).',
-          rightPane: 'Email details & reply editor (flex: 1, overflow-y: auto, padding: 24px).',
-        },
-        uiElements: [
-          'Left Pane: Outlook-style inbox list with count-based batch loading and a "See More" / "Load More" button (or infinite scroll) using searchInvoicesPaged page and count (supporting 2000+ items up to total_count). Each card displays exactly 3 lines: Line 1: Human/Contact Name (from Contact, form_data.email_to, or user handle parsed from from_email, e.g. "nickw", "noreply", "support", "Clinton") in bold on left, formatted Time/Date on right; Line 2: The actual email Subject line (from form_data.email_subject, e.g. "Re: 47632108 - Ditec", "Cin7 Core verification code", "Fw: Doc ID 47652181") prominent below the name; Line 3: Clean status pill badge (e.g. "In Progress", "Waiting for Approval") and preview snippet (e.g. "AI response ready to review"). NEVER display "Unknown sender" or file names like "email.html" / "doc.pdf" on cards.',
-          'Left Pane Card Hover Actions: On hovering an inbox card, display Outlook-style quick action icons including 🗑️ Delete (calls moveToRecycleBin with parentDocumentId, with confirmation dialog or undo toast).',
-          'Right Pane Header: Clean email header with Subject title as the primary heading, Sender (From), and Date/Time.',
-          'Right Pane Reply Toolbar & Attachments: Complete visual rich-text toolbar above the WYSIWYG editor containing formatting buttons (Bold, Italic, Underline, Bullet/Numbered Lists, Quotes, Code, Links 🔗, Clear Formatting) and an Attachment / Screenshot upload button ("📎 Choose File or Drop file here / Paste Screenshot") allowing users to add screenshot images and file attachments to the response.',
-          'Right Pane Reply Editor: Single WYSIWYG visual rich-text editor (contentEditable or rich-text component with toolbar) for editing ONLY the AI response portion directly as formatted text. The original email inside <div id="ai-original-email"> is separated and rendered below as sanitized, strictly read-only context. Never display raw HTML code in a <textarea> with a separate preview.',
-          'Right Pane Actions: "Save Draft" button (calls updateInvoiceImage with attachmentInvoiceId) and "Approve & Reply" button (calls approveInvoice with parentDocumentId). Enabled for pending approval items.',
-          'Right Pane Context: Original email message rendered cleanly and read-only below the reply editor from <div id="ai-original-email">.',
+        capabilities: [
+          'Document/message listing with sender and subject resolution',
+          'Rich text editing for draft response with original context separation (<div id="ai-original-email">)',
+          'Draft saving (updateInvoiceImage with attachmentInvoiceId)',
+          'Approval execution (approveInvoice with parentDocumentId)',
+          'Document deletion (moveToRecycleBin with parentDocumentId)',
+          'Attachment and screenshot upload handling',
         ],
         _notes: [
-          'Default to statefilter=APPROVAL to show all dashboard approval items unless the user explicitly asks for EMAIL_APPROVAL.',
-          'If Completed is 1, the workflow is completed/read-only (does not prove email delivery; hide actions). Pending items (Completed === 0) are actionable with Save Draft and Approve & Reply. Do NOT disable actions on pending items based on unrecognized ImageState numbers.',
+          'Default to statefilter=APPROVAL to retrieve pending dashboard approvals unless the user specifies EMAIL_APPROVAL.',
+          'Completed items (Completed === 1) are read-only; active pending items (Completed === 0) are actionable.',
+          'UI layouts, themes, and styling (e.g. 2-pane, Outlook-style, modal dialogs) should be determined by user prompts.',
         ],
       },
       'purchase-order-selector': {
         description: 'Purchase order lookup component with type toggle and target dropdown.',
         requiredEndpoints: ['getPurchaseOrders3'],
-        uiElements: [
+        capabilities: [
           'Type toggle (Purchase = 0 / Contractor = 1)',
-          'Target dropdown: Displays user-friendly names (Xero, Procore, Simpro, QuickBooks, MYOB) and sends the selected numeric ID (1, 48, 27, 9, 2) in the API request. Does NOT require environment variable configuration.',
+          'Target dropdown: Displays user-friendly names (Xero, Procore, Simpro, QuickBooks, MYOB) and sends numeric target ID (1, 48, 27, 9, 2)',
           'Purchase order results list with po_number and supplier',
         ],
         _notes: [
@@ -791,10 +789,10 @@ export async function buildDeveloperSpec() {
       'In the reply section, provide an Attachment / Screenshot upload feature ("📎 Choose File or Drop file here / Paste screenshot") so the user can easily attach images or files alongside their response.',
       'If Completed is 1, the workflow is completed/read-only (does not prove email delivery); keep the document in read-only mode and do not show Approve or Reject action buttons. For active pending approval documents (where Completed === 0), enable the action buttons (Save Draft, Approve & Reply) directly.',
       'For general approval queues, default to statefilter=APPROVAL to query all pending dashboard approvals. Use statefilter=EMAIL_APPROVAL only when specifically requested.',
-      'In Outlook-style inbox lists, format each card with exactly 3 lines: Line 1: Human/Contact Name (from Contact, form_data.email_to, or user handle parsed from from_email, e.g. "nickw", "noreply", "support", "Clinton") in bold on left, Date/Time on right; Line 2: The actual email Subject line (from form_data.email_subject, e.g. "Re: 47632108 - Ditec", "Cin7 Core verification code", "Fw: Doc ID 47652181") prominent below the name; Line 3: Clean status pill badge (e.g. "In Progress", "Waiting for Approval") and preview snippet (e.g. "AI response ready to review"). NEVER display "Unknown sender" or file names like "email.html" / "doc.pdf". Provide card hover actions (e.g. 🗑️ Delete calling moveToRecycleBin).',
+      'When displaying document listings or message cards, resolve human-friendly metadata: display the Contact/Sender name (from Contact, form_data.email_to, or from_email) and Subject (from form_data.email_subject). Avoid displaying raw internal file names (e.g. "email.html", "doc.pdf") or generic placeholders as the primary title when meaningful metadata is available.',
       'Paginate records based on the API count parameter (e.g. count=20 or 50 per request). Do not render all thousands of records on a single page at once; provide a "See More" / "Load More" button or page-by-page infinite scroll using page and total_count.',
       'Translate internal ImageState numeric codes to human-readable status labels (e.g. "Waiting for Approval", "In Progress", "Complete", "Failed"). Never display raw "State 109" in the UI.',
-      'In Outlook 2-pane layouts, ensure independent pane scrolling (left list and right reading pane scroll independently; app header stays fixed).',
+      'Specific UI layouts, themes, and design choices (e.g. multi-pane, cards, tables, modals) should be guided by user prompts or ChatGPT app prompts; the MCP specification defines backend API contracts, security rules, and integration workflows.',
 
       // Code output directive
       'When the user requests to create, build, or generate an application, create a complete, production-ready, runnable/downloadable project artifact (package.json, backend server, frontend components, CSS/styles, and configuration) rather than merely summarizing the architecture or printing fragmented snippets.',
