@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { ezzyBillsDeveloperResource } from './resources/ezzyBillsDeveloperResource.js';
 import { registerGetEzzyBillsDeveloperSpecTool } from './tools/getEzzyBillsDeveloperSpec.js';
+import 'dotenv/config';
 
 export function createEzzyBillsMcpServer() {
   const server = new McpServer({

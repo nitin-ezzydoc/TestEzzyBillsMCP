@@ -19,24 +19,137 @@
  * contentSecurityRules, actionRiskRules, apiCatalogue, workflowRecipes,
  * applicationProfiles, idRules, specificationGaps, generationRules.
  */
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
+import fs from 'node:fs';//for local file storage
+import { Octokit } from 'octokit';
+import { createAppAuth } from '@octokit/auth-app';
+
+import { DefaultAzureCredential } from '@azure/identity';
+import { SecretClient } from '@azure/keyvault-secrets';
 
 import { buildApiCatalogue } from './openApiToCatalogue.js';
 
-function loadOpenApiSpec() {
-  const filePath = path.resolve(
-    path.dirname(fileURLToPath(import.meta.url)),
-    '../../generated/openapi.yaml'
-  );
+let cachedPrivateKey: string | undefined;
 
-  if (!fs.existsSync(filePath)) {
-    throw new Error(`Generated OpenAPI file not found: ${filePath}`);
+async function getGitHubPrivateKey() {
+  if (cachedPrivateKey) {
+    return cachedPrivateKey;
   }
 
-  return YAML.parse(fs.readFileSync(filePath, 'utf8'));
+  const keyVaultUrl = process.env.KEY_VAULT_URL;
+
+  if (!keyVaultUrl) {
+    throw new Error('KEY_VAULT_URL is not configured.');
+  }
+
+  const credential = new DefaultAzureCredential();
+
+  const client = new SecretClient(
+    keyVaultUrl,
+    credential
+  );
+
+  const secret = await client.getSecret(
+    'github-app-private-key'
+  );
+
+  if (!secret.value) {
+    throw new Error(
+      'github-app-private-key was not found in Azure Key Vault.'
+    );
+  }
+
+  cachedPrivateKey = secret.value;
+
+  return cachedPrivateKey;
+}
+
+async function loadOpenApiSpec() {
+  const appId = process.env.GITHUB_APP_ID;
+  const installationId = process.env.GITHUB_INSTALLATION_ID;
+  const owner = process.env.GITHUB_OWNER;
+  const repo = process.env.GITHUB_REPO;
+  const path = process.env.OPENAPI_SPEC_PATH;
+  const ref = process.env.GITHUB_BRANCH ?? 'main';
+  const privateKeyPath = process.env.GITHUB_PRIVATE_KEY_PATH;
+
+  if (!appId) {
+    throw new Error('GITHUB_APP_ID is not configured.');
+  }
+
+  if (!installationId) {
+    throw new Error('GITHUB_INSTALLATION_ID is not configured.');
+  }
+
+  if (!owner) {
+    throw new Error('GITHUB_OWNER is not configured.');
+  }
+
+  if (!repo) {
+    throw new Error('GITHUB_REPO is not configured.');
+  }
+
+  if (!path) {
+    throw new Error('OPENAPI_SPEC_PATH is not configured.');
+  }
+
+  if (!privateKeyPath) {
+    throw new Error('GITHUB_PRIVATE_KEY_PATH is not configured.');
+  }
+
+  const privateKey = fs.readFileSync(privateKeyPath, 'utf8');
+   // Get the GitHub App private key from Azure Key Vault
+  // const privateKey = await getGitHubPrivateKey();
+
+  const auth = createAppAuth({
+    appId,
+    privateKey,
+    installationId: Number(installationId),
+  });
+
+  const installationAuth = await auth({
+    type: 'installation',
+  });
+
+  const octokit = new Octokit({
+    auth: installationAuth.token,
+  });
+
+  console.log(
+    `Loading OpenAPI from GitHub: ${owner}/${repo}/${path} @ ${ref}`
+  );
+
+  const response = await octokit.request(
+    'GET /repos/{owner}/{repo}/contents/{path}',
+    {
+      owner,
+      repo,
+      path,
+      ref,
+
+      headers: {
+        accept: 'application/vnd.github.raw+json',
+      },
+    }
+  );
+
+  const yamlText = response.data as unknown as string;
+
+  console.log('OpenAPI fetched successfully.');
+
+  const parsed = YAML.parse(yamlText);
+
+  console.log(
+    'Parsed top-level keys:',
+    Object.keys(parsed ?? {})
+  );
+
+  console.log(
+    'OpenAPI paths count:',
+    Object.keys(parsed?.paths ?? {}).length
+  );
+
+  return parsed;
 }
 export function registerGetEzzyBillsDeveloperSpecTool(server: any) {
   server.registerTool(
@@ -61,7 +174,7 @@ export function registerGetEzzyBillsDeveloperSpecTool(server: any) {
     },
 
     async () => {
-      const spec = buildDeveloperSpec();
+      const spec = await buildDeveloperSpec();
 
       return {
         content: [
@@ -81,8 +194,8 @@ export function registerGetEzzyBillsDeveloperSpecTool(server: any) {
   );
 }
 
-export function buildDeveloperSpec() {
-  const openApi = loadOpenApiSpec();
+export async function buildDeveloperSpec() {
+  const openApi = await loadOpenApiSpec();
   const apiCatalogue = buildApiCatalogue(openApi);
   return {
 
