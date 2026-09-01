@@ -20,65 +20,22 @@
  * applicationProfiles, idRules, specificationGaps, generationRules.
  */
 import YAML from 'yaml';
-import fs from 'node:fs';//for local file storage
 import { Octokit } from 'octokit';
-import { createAppAuth } from '@octokit/auth-app';
 
-import { DefaultAzureCredential } from '@azure/identity';
-import { SecretClient } from '@azure/keyvault-secrets';
+// import { DefaultAzureCredential } from '@azure/identity';
+// import { SecretClient } from '@azure/keyvault-secrets';
 
 import { buildApiCatalogue } from './openApiToCatalogue.js';
 
-let cachedPrivateKey: string | undefined;
-
-async function getGitHubPrivateKey() {
-  if (cachedPrivateKey) {
-    return cachedPrivateKey;
-  }
-
-  const keyVaultUrl = process.env.KEY_VAULT_URL;
-
-  if (!keyVaultUrl) {
-    throw new Error('KEY_VAULT_URL is not configured.');
-  }
-
-  const credential = new DefaultAzureCredential();
-
-  const client = new SecretClient(
-    keyVaultUrl,
-    credential
-  );
-
-  const secret = await client.getSecret(
-    'github-app-private-key'
-  );
-
-  if (!secret.value) {
-    throw new Error(
-      'github-app-private-key was not found in Azure Key Vault.'
-    );
-  }
-
-  cachedPrivateKey = secret.value;
-
-  return cachedPrivateKey;
-}
-
 async function loadOpenApiSpec() {
-  const appId = process.env.GITHUB_APP_ID;
-  const installationId = process.env.GITHUB_INSTALLATION_ID;
+  const githubToken = process.env.GITHUB_TOKEN;
   const owner = process.env.GITHUB_OWNER;
   const repo = process.env.GITHUB_REPO;
   const path = process.env.OPENAPI_SPEC_PATH;
   const ref = process.env.GITHUB_BRANCH ?? 'main';
-  const privateKeyPath = process.env.GITHUB_PRIVATE_KEY_PATH;
 
-  if (!appId) {
-    throw new Error('GITHUB_APP_ID is not configured.');
-  }
-
-  if (!installationId) {
-    throw new Error('GITHUB_INSTALLATION_ID is not configured.');
+  if (!githubToken) {
+    throw new Error('GITHUB_TOKEN is not configured.');
   }
 
   if (!owner) {
@@ -93,26 +50,8 @@ async function loadOpenApiSpec() {
     throw new Error('OPENAPI_SPEC_PATH is not configured.');
   }
 
-  if (!privateKeyPath) {
-    throw new Error('GITHUB_PRIVATE_KEY_PATH is not configured.');
-  }
-
-  const privateKey = fs.readFileSync(privateKeyPath, 'utf8');
-   // Get the GitHub App private key from Azure Key Vault
-  // const privateKey = await getGitHubPrivateKey();
-
-  const auth = createAppAuth({
-    appId,
-    privateKey,
-    installationId: Number(installationId),
-  });
-
-  const installationAuth = await auth({
-    type: 'installation',
-  });
-
   const octokit = new Octokit({
-    auth: installationAuth.token,
+    auth: githubToken,
   });
 
   console.log(
@@ -126,7 +65,6 @@ async function loadOpenApiSpec() {
       repo,
       path,
       ref,
-
       headers: {
         accept: 'application/vnd.github.raw+json',
       },
